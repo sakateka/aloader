@@ -45,9 +45,10 @@ async def query_target(loop, args, file_path):
     url = "{}/upload-url".format(args["--target"], fname)
     params = json.loads(args["--params"])
     params["path"] = fname
-    headers = args.get("--headers", {})
+    headers = args["--headers"]
     if not headers:
-        headers = {}
+        headers = '{}'
+    headers = json.loads(headers)
     headers["User-Agent"] = "Async/Await loader example"
     try:
         if not exists(fname_target):
