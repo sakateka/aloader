@@ -107,10 +107,12 @@ async def upload_file(fname):
             async with aiohttp.ClientSession(
                     connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
                 async with session.post(post_uri, data=data, expect100=True) as resp:
-                    if resp.status == 200:
-                        urls["uploaded"] = True
-                        fsf.seek(0)
-                        fsf.write(json.dumps(urls, indent=2))
+                    if resp.status < 200 or resp.status > 299:  # raise if not 2xx code
+                        raise Exception(post_uri, resp, resp.reason)
+                    urls["uploaded"] = True
+                    fsf.seek(0)
+                    fsf.write(json.dumps(urls, indent=2))
+
                     data = await resp.json()
                     log.info("Upload response: %s", data)
         else:
