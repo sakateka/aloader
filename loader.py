@@ -4,7 +4,7 @@
 Two step async/await loader example
 
 Usage:
-    loader.py <dir> -t HOST -p PARAMS [-b N] [-g GLOB]
+    loader.py <dir> -t HOST -p PARAMS [-b N] [-g GLOB] [--headers HEADERS]
     loader.py (-h | --help | --version)
 
 Options:
@@ -13,6 +13,7 @@ Options:
     -p PARAMS, --params PARAMS  Query target GET params (json string)
     -b N, --batch N             Query batch size [default: 4].
     -g GLOB, --glob GLOB        Filter files to upload [default: *].
+    --headers HEADRES           Custom headers dict (json string)
 
 Author: Sergey Kacheev (sakateka)
 """
@@ -44,16 +45,22 @@ async def query_target(loop, args, file_path):
     url = "{}/upload-url".format(args["--target"], fname)
     params = json.loads(args["--params"])
     params["path"] = fname
+    headers = args.get("--headers", {})
+    if not headers:
+        headers = {}
+    headers["User-Agent"] = "Async/Await loader example"
     try:
         if not exists(fname_target):
-            async with aiohttp.get(url, params=params) as target:
-                if target.status != 200:
-                    raise Exception(url, target, target.reason)
-                log.info("Query target response OK.")
-                resp = await target.json()
-                with open(fname_target, "w") as status:
-                    status.write(json.dumps(resp, indent=2))
-                log.debug("Query target response data: %s", json.dumps(resp))
+            async with aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+                async with session.post(url, params=params, headers=headers) as target:
+                    if target.status != 200:
+                        raise Exception(url, target, target.reason)
+                    log.info("Query target response OK.")
+                    resp = await target.json()
+                    with open(fname_target, "w") as status:
+                        status.write(json.dumps(resp, indent=2))
+                    log.debug("Query target response data: %s", json.dumps(resp))
         else:
             log.info("Target for '%s' alredy exists, skip query.", fname)
 
@@ -69,8 +76,10 @@ async def get_status(url, fname):
 
     stat = None
     log.info("Query status for: %s", fname)
-    async with aiohttp.get(url) as sresp:
-        stat = await sresp.json()
+    async with aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+        async with session.get(url) as sresp:
+            stat = await sresp.json()
     status = open(fname + ".status", "a+")
     log.info("Write status: %s", fname)
     stat["=>> QueryTime <<="] = datetime.datetime.now().isoformat()
@@ -94,13 +103,15 @@ async def upload_file(fname):
         stat_uri = urls["poll-result"]
         data = {"file": open(fname, "rb")}
         if not urls.get("uploaded"):
-            async with aiohttp.post(post_uri, data=data, expect100=True) as resp:
-                if resp.status == 200:
-                    urls["uploaded"] = True
-                    fsf.seek(0)
-                    fsf.write(json.dumps(urls, indent=2))
-                data = await resp.json()
-                log.info("Upload response: %s", data)
+            async with aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+                async with session.post(post_uri, data=data, expect100=True) as resp:
+                    if resp.status == 200:
+                        urls["uploaded"] = True
+                        fsf.seek(0)
+                        fsf.write(json.dumps(urls, indent=2))
+                    data = await resp.json()
+                    log.info("Upload response: %s", data)
         else:
             log.info("File '%s' alredy uploaded, skip.", fname)
         await get_status(stat_uri, fname)
